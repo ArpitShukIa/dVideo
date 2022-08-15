@@ -21,7 +21,13 @@ export const getAllVideos = async (contract) => {
     // Load videos starting from the newest
     for (let i = videoCount; i > 0; i--) {
         const video = await contract.videos(i)
-        videos.push(video)
+        videos.push({
+            id: video.id,
+            hash: video.hash,
+            title: video.title,
+            author: video.author,
+            likes: video.likes.toNumber()
+        })
     }
     return videos
 }

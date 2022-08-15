@@ -4,11 +4,15 @@ import {providers} from "ethers";
 import {getAllVideos, getDeployedContract} from "../contractUtils";
 import NavBar from "./NavBar";
 import {CircularProgress} from "@mui/material";
+import Main from "./Main";
+import {ipfsClient} from "../ipfs";
 
 function App() {
 
     const [contract, setContract] = useState(null)
     const [videos, setVideos] = useState([])
+    const [currentVideoIndex, setCurrentVideoIndex] = useState(null)
+    const [likedCurrentVideo, setLikedCurrentVideo] = useState(null)
     const [loading, setLoading] = useState(false)
 
     const {account, activateBrowserWallet, chainId} = useEthers()
@@ -35,7 +39,8 @@ function App() {
             const contract = await getDeployedContract()
             if (contract) {
                 setContract(contract)
-                refresh(contract)
+                await refresh(contract)
+                setLoading(false)
             } else {
                 window.alert('Please connect to Rinkeby Test Network')
             }
@@ -43,15 +48,56 @@ function App() {
         run()
     }, [account, chainId])
 
+    useEffect(() => {
+        if (currentVideoIndex === null)
+            return
+        setLikedCurrentVideo(null)
+        const run = async () => {
+            const liked = await contract.videoLikes(videos[currentVideoIndex].id, account)
+            setLikedCurrentVideo(liked)
+        }
+        run()
+    }, [account, currentVideoIndex, videos])
+
     const refresh = async (contract) => {
-        setLoading(true)
         try {
             const videos = await getAllVideos(contract)
             setVideos(videos)
         } catch (e) {
             console.error(e)
         }
+    }
+
+    const uploadVideo = async (videoFile, videoTitle) => {
+        setLoading(true)
+        try {
+            const result = await ipfsClient.add(videoFile)
+            const tx = await contract.uploadVideo(result.path, videoTitle)
+            await tx.wait(1)
+            await refresh(contract)
+        } catch (e) {
+            console.log(e)
+        }
         setLoading(false)
+    }
+
+    const changeVideo = (videoIndex) => {
+        setCurrentVideoIndex(videoIndex)
+    }
+
+    const toggleLiked = async () => {
+        try {
+            if (likedCurrentVideo) {
+                const tx = await contract.removeLike(videos[currentVideoIndex].id)
+                await tx.wait(1)
+            } else {
+                const tx = await contract.addLike(videos[currentVideoIndex].id)
+                await tx.wait(1)
+            }
+            await refresh(contract)
+        } catch (e) {
+            console.error(e)
+        }
     }
 
     return (
@@ -65,8 +111,14 @@ function App() {
                     : <div>
                         {
                             isConnected
-                                ? <div>
-                                </div>
+                                ? <Main
+                                    videos={videos}
+                                    currentVideoIndex={currentVideoIndex}
+                                    likedCurrentVideo={likedCurrentVideo}
+                                    uploadVideo={uploadVideo}
+                                    changeVideo={changeVideo}
+                                    toggleLiked={toggleLiked}
+                                />
                                 : <div className="text-center mt-4">
                                     <p style={{fontSize: 20}}>Connect to your Metamask wallet</p>
                                     <button className="btn btn-primary" onClick={activateBrowserWallet}>Connect</button>
